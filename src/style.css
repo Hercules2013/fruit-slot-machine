@@ -1,0 +1,8 @@
+html {
+  /*
+  Sometimes the canvas might exceed the width/height by a few pixels due to
+  platform differences or viewport calculations. So that we don't display
+  scrollbars we clip the small excess.
+  */
+  overflow: clip;
+}
