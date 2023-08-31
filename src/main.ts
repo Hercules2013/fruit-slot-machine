@@ -1,6 +1,9 @@
+import { Application, Graphics, Sprite } from 'pixi.js';
+
 import 'normalize.css';
 import './style.css';
-import { Application, Graphics, Sprite } from 'pixi.js';
+
+import Game from './game';
 
 const app = new Application<HTMLCanvasElement>({
   resolution: window.devicePixelRatio ?? 1,
@@ -11,22 +14,21 @@ const app = new Application<HTMLCanvasElement>({
   height: 480,
 });
 
-const graphics = new Graphics();
-graphics.beginFill('#ff0000');
-graphics.drawRect(0, 0, 100, 100);
-graphics.endFill();
+const backGraphics = new Graphics();
+backGraphics.beginFill('#1099bb');
+backGraphics.drawRect(0, 0, 100, 100);
+backGraphics.endFill();
 
-const texture = app.renderer.generateTexture(graphics);
+const backgroundTexture = app.renderer.generateTexture(backGraphics);
 
-const sprite = new Sprite(texture);
-sprite.x = app.screen.width / 2;
-sprite.y = app.screen.height / 2;
-sprite.anchor.set(0.5);
+const backgroundSpirite = new Sprite(backgroundTexture);
 
-app.stage.addChild(sprite);
+backgroundSpirite.width = app.screen.width;
+backgroundSpirite.height = app.screen.height;
 
-app.ticker.add((delta) => {
-  sprite.rotation += 0.01 * delta;
-});
+app.stage.addChildAt(backgroundSpirite, 0);
 
 document.body.appendChild(app.view);
+
+const gameScene = new Game(app);
+app.stage.addChild(gameScene);
