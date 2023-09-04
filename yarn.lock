@@ -2028,6 +2028,11 @@
     "@types/css-font-loading-module" "^0.0.7"
     ismobilejs "^1.1.0"
 
+"@pixi/sound@^5.2.1":
+  version "5.2.1"
+  resolved "https://registry.yarnpkg.com/@pixi/sound/-/sound-5.2.1.tgz#9872a0e199a3c8021910f3f98acfcaa71c014bfc"
+  integrity sha512-QzopUO1kdn2b6s0LkLuQTWdxn2//Of0x944huDLT53oXMPtfnv9Df2qqZeOVZfjzVU05Q8dRqG171YcWMk1ltg==
+
 "@pixi/sprite-animated@7.2.4":
   version "7.2.4"
   resolved "https://registry.yarnpkg.com/@pixi/sprite-animated/-/sprite-animated-7.2.4.tgz#46b95e52781dd7cf84ee315521c209e48c40656d"

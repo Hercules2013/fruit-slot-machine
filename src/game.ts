@@ -9,6 +9,7 @@ import {
 import { Text, TextStyle } from '@pixi/text';
 import { Button } from '@pixi/ui';
 import { gsap } from 'gsap';
+import { sound } from '@pixi/sound';
 
 import {
   PADDING_SIZE,
@@ -46,6 +47,10 @@ class Game extends Container {
   coinCount: number;
   guessNumber: number;
   activeMultiply: Text[];
+  moveInterval: number;
+  addCoins: number;
+  transfer: number;
+  tween: any;
 
   constructor(app: Application<HTMLCanvasElement>) {
     super();
@@ -62,6 +67,10 @@ class Game extends Container {
     this.coinCount = 520;
     this.guessNumber = 0;
     this.activeMultiply = [];
+    this.moveInterval = -1;
+    this.addCoins = 1;
+    this.transfer = 0;
+    this.tween = null;
 
     // functions
     this.update = this.update.bind(this);
@@ -83,30 +92,39 @@ class Game extends Container {
 
   loadAssets() {
     /* eslint-disable */
-    Assets.add('back', require('./assets/background.png'));
-    Assets.add('logo', require('./assets/logo.png'));
+    Assets.add('back', require('./assets/image/background.png'));
+    Assets.add('logo', require('./assets/image/logo.png'));
 
     // buttons
-    Assets.add('btn', require('./assets/btn.png'));
-    Assets.add('btn-hover', require('./assets/btn-hover.png'));
-    Assets.add('btn-pressed', require('./assets/btn-pressed.png'));
-    Assets.add('btn-disabled', require('./assets/btn-disabled.png'));
+    Assets.add('btn', require('./assets/image/btn.png'));
+    Assets.add('btn-hover', require('./assets/image/btn-hover.png'));
+    Assets.add('btn-pressed', require('./assets/image/btn-pressed.png'));
+    Assets.add('btn-disabled', require('./assets/image/btn-disabled.png'));
 
     // fruits
-    Assets.add(['apple', 'apple*2'], require('./assets/apple.png'));
-    Assets.add(['bar', 'bar*50'], require('./assets/bar.png'));
-    Assets.add(['bell', 'bell*2'], require('./assets/bell.png'));
-    Assets.add(['free-spin', 'free-spin*2'], require('./assets/free-spin.png'));
-    Assets.add(['lemon', 'lemon*2'], require('./assets/lemon.png'));
-    Assets.add(['mul-fifty'], require('./assets/mul-fifty.png'));
-    Assets.add(['mul-two'], require('./assets/mul-two.png'));
-    Assets.add(['orange', 'orange*2'], require('./assets/orange.png'));
-    Assets.add(['seven', 'seven*2'], require('./assets/seven.png'));
-    Assets.add(['star', 'star*2'], require('./assets/star.png'));
+    Assets.add(['apple', 'apple*2'], require('./assets/image/apple.png'));
+    Assets.add(['bar', 'bar*50'], require('./assets/image/bar.png'));
+    Assets.add(['bell', 'bell*2'], require('./assets/image/bell.png'));
+    Assets.add(
+      ['free-spin', 'free-spin*2'],
+      require('./assets/image/free-spin.png'),
+    );
+    Assets.add(['lemon', 'lemon*2'], require('./assets/image/lemon.png'));
+    Assets.add(['mul-fifty'], require('./assets/image/mul-fifty.png'));
+    Assets.add(['mul-two'], require('./assets/image/mul-two.png'));
+    Assets.add(['orange', 'orange*2'], require('./assets/image/orange.png'));
+    Assets.add(['seven', 'seven*2'], require('./assets/image/seven.png'));
+    Assets.add(['star', 'star*2'], require('./assets/image/star.png'));
     Assets.add(
       ['watermelon', 'watermelon*2'],
-      require('./assets/watermelon.png'),
+      require('./assets/image/watermelon.png'),
     );
+
+    sound.add('click', './sound/click.mp3');
+    sound.add('count', './sound/count.mp3');
+    sound.add('error', './sound/error.mp3');
+    sound.add('spin', './sound/spin.mp3');
+    sound.add('win', './sound/win.mp3');
   }
 
   onAssetsLoaded(textures: Record<string, any>) {
@@ -247,20 +265,27 @@ class Game extends Container {
 
       const button = new Button(btnView);
       button.onHover.connect(() => (btnView.texture = textures['btn-hover']));
-      button.onOut.connect(() => (btnView.texture = textures['btn']));
-      button.onDown.connect(() => (btnView.texture = textures['btn-pressed']));
+      button.onDown.connect(() => {
+        btnView.texture = textures['btn-pressed'];
+        if (text == 'L') {
+          this.handleMoveCoin('left');
+        }
+        if (text == 'R') {
+          this.handleMoveCoin('right');
+        }
+      });
+      button.onUp.connect(() => {
+        if (text == 'L' || text == 'R') this.handleStopMoveCoin();
+      });
+      button.onOut.connect(() => {
+        btnView.texture = textures['btn'];
+      });
       button.onPress.connect(() => {
         btnView.texture = textures['btn-hover'];
-        // this.addFruitCredit(type);
+        this.playSound('click');
         switch (text) {
           case 'All\n+1':
             this.handlePlusAll();
-            break;
-          case 'L':
-            this.handleMoveCoin('left');
-            break;
-          case 'R':
-            this.handleMoveCoin('right');
             break;
           case '1-6':
             this.handleBetDoubling('small');
@@ -269,7 +294,7 @@ class Game extends Container {
             this.handleBetDoubling('big');
             break;
           case 'GO':
-            this.handleGo();
+            this.handleGo('');
             break;
         }
       });
@@ -320,6 +345,7 @@ class Game extends Container {
       button.onDown.connect(() => (btnView.texture = textures['btn-pressed']));
       button.onPress.connect(() => {
         btnView.texture = textures['btn-hover'];
+        this.playSound('click');
         this.addFruitCredit(type);
       });
       this.addChild(button.view);
@@ -330,7 +356,7 @@ class Game extends Container {
   }
 
   update(delta: number) {
-    if (!this.isInit) return;
+    if (!this.isInit || this.curSpeed == 0) return;
 
     this.activeCell = (this.activeCell + this.curSpeed) % 24;
     this.activeSprites[0].x =
@@ -372,6 +398,8 @@ class Game extends Container {
   }
 
   addFruitCredit(fruit: string) {
+    if (this.coinCount < 1) return;
+
     let betNumber: number = parseInt(this.credits[fruit].text) + 1;
     this.credits[fruit].text = betNumber.toString().padStart(2, '0');
 
@@ -386,80 +414,138 @@ class Game extends Container {
   }
 
   handleMoveCoin(direction: string) {
-    if (
-      (this.bonusCount < 1 && direction == 'right') ||
-      (this.coinCount < 1 && direction == 'left')
-    )
-      return;
-    this.bonusCount = this.bonusCount + (direction == 'left' ? 1 : -1);
-    this.coinCount = this.coinCount + (direction == 'left' ? -1 : 1);
-    this.ctrlWin.text = this.bonusCount.toString().padStart(8, '0');
-    this.ctrlCredits.text = this.coinCount.toString().padStart(8, '0');
+    if (this.moveInterval != -1) {
+      clearInterval(this.moveInterval);
+    }
+    // Play Count Sound
+    this.playSound('count');
+
+    this.tween = gsap.fromTo(
+      this,
+      {
+        transfer: 0,
+      },
+      {
+        transfer: direction === 'right' ? this.bonusCount : +this.coinCount,
+        duration:
+          (direction === 'right' ? this.bonusCount : this.coinCount) * 0.05,
+        ease: 'none',
+        onStart: () => {
+          // this.btnCtrls['L'].enabled = false;
+          // this.btnCtrls['R'].enabled = false;
+        },
+        onUpdate: () => {
+          const transferValue = parseInt(
+            (direction == 'right' ? -this.transfer : this.transfer).toString(),
+          );
+          this.ctrlWin.text = (this.bonusCount + transferValue)
+            .toString()
+            .padStart(8, '0');
+          this.ctrlCredits.text = (this.coinCount - transferValue)
+            .toString()
+            .padStart(8, '0');
+        },
+        onComplete: () => {
+          // this.btnCtrls['L'].enabled = true;
+          // this.btnCtrls['R'].enabled = true;
+
+          let totalCount = this.bonusCount + this.coinCount;
+          this.bonusCount = direction == 'left' ? totalCount : 0;
+          this.coinCount = direction == 'right' ? totalCount : 0;
+          this.ctrlWin.text = this.bonusCount.toString().padStart(8, '0');
+          this.ctrlCredits.text = this.coinCount.toString().padStart(8, '0');
+        },
+      },
+    );
+  }
+
+  handleStopMoveCoin() {
+    if (this.tween == null) return;
+    this.tween.kill();
+    this.bonusCount = parseInt(this.ctrlWin.text);
+    this.coinCount = parseInt(this.ctrlCredits.text);
+    this.tween = null;
   }
 
   handleBetDoubling(doubling: string) {
+    if (this.bonusCount == 0) {
+      this.playSound('error');
+      return;
+    }
+
     this.guessNumber = Math.floor(Math.random() * 13) + 1;
     this.ctrlGuess.text = this.guessNumber.toString().padStart(2, '0');
 
     if (doubling == 'small') {
-      this.bonusCount =
-        this.guessNumber < 7 ? this.bonusCount * 2 : this.bonusCount;
+      this.bonusCount = this.guessNumber < 7 ? this.bonusCount * 2 : 0;
     } else {
-      this.bonusCount =
-        this.guessNumber > 7 ? this.bonusCount * 2 : this.bonusCount;
+      this.bonusCount = this.guessNumber > 7 ? this.bonusCount * 2 : 0;
     }
 
+    // Win Or Lose Sound
+    this.playSound(this.bonusCount == 0 ? 'error' : 'win');
+
     this.ctrlWin.text = this.bonusCount.toString().padStart(8, '0');
-
-    // this.coinCount += this.bonusCount;
-    // this.bonusCount = 0;
-    // this.ctrlWin.text = ''.padStart(8, '0');
-    // this.ctrlCredits.text = this.coinCount.toString().padStart(8, '0');
-
-    Object.keys(this.credits).forEach((key) => {
-      this.credits[key].text = '00';
-    });
   }
 
-  handleGo() {
+  handleGo(stopField: string) {
+    let target: number = FRUITS.indexOf(stopField);
+    // console.log('Go to :: ', target);
+
+    var totalBetCoins: number = 0;
+    Object.keys(this.credits).forEach((key) => {
+      totalBetCoins += parseInt(this.credits[key].text);
+    });
+    if (totalBetCoins == 0) {
+      this.playSound('error');
+      return;
+    }
+
     if (parseInt(this.ctrlWin.text) > 0) {
-      // this.coinCount += parseInt(this.ctrlWin.text);
-      // this.ctrlCredits.text = this.coinCount.toString().padStart(8, '0');
-      // this.ctrlWin.text = '0'.padStart(8, '0');
-      // Object.keys(this.credits).forEach((key) => {
-      //   this.credits[key].text = '00';
-      // });
-    } else {
-      // Disable All Buttons
-      this.btnCtrls['All\n+1'].enabled = false;
-      this.btnCtrls['L'].enabled = false;
-      this.btnCtrls['R'].enabled = false;
-      this.btnCtrls['1-6'].enabled = false;
-      this.btnCtrls['8-13'].enabled = false;
+      this.coinCount += this.bonusCount;
+      this.bonusCount = 0;
+      this.ctrlCredits.text = this.coinCount.toString().padStart(8, '0');
+      this.ctrlWin.text = '0'.padStart(8, '0');
+    }
 
-      this.activeSprites[1].visible = false;
-      this.activeSprites[2].visible = false;
-      this.activeSprites[3].visible = false;
+    this.btnCtrls['All\n+1'].enabled = false;
+    this.btnCtrls['L'].enabled = false;
+    this.btnCtrls['R'].enabled = false;
+    this.btnCtrls['1-6'].enabled = false;
+    this.btnCtrls['8-13'].enabled = false;
 
-      let accelerate_time = Math.random() / 2 + 0.5;
-      let decelerate_time = Math.random() / 2 + 0.5;
+    this.activeSprites[1].visible = false;
+    this.activeSprites[2].visible = false;
+    this.activeSprites[3].visible = false;
 
-      gsap.to(this, {
-        curSpeed: 1,
-        duration: accelerate_time,
-        ease: 'none',
-        onComplete: () => {
+    let accelerate_time = Math.random() / 2 + 0.5;
+    let decelerate_time = 0.81181669;
+
+    this.playSound('spin');
+
+    gsap.to(this, {
+      curSpeed: 1,
+      duration: accelerate_time,
+      ease: 'none',
+      onComplete: () => {
+        setTimeout(() => {
+          let delay =
+            target < 0 ? 0 : ((target + 23 - this.activeCell) % 24) * 16.67;
           setTimeout(() => {
             gsap.to(this, {
               curSpeed: 0,
               duration: decelerate_time,
               ease: 'none',
-              onComplete: this.slotCompleted,
+              onComplete: () => {
+                this.curSpeed = 0;
+                this.activeCell = target < 0 ? this.activeCell : target;
+                this.slotCompleted();
+              },
             });
-          }, 3000 - (accelerate_time + decelerate_time) * 1000);
-        },
-      });
-    }
+          }, delay);
+        }, 3000 - (accelerate_time + decelerate_time) * 1000);
+      },
+    });
   }
 
   getRandomElements(arr: string[], numElements: number): Set<number> {
@@ -497,7 +583,7 @@ class Game extends Container {
       luck_fruits.forEach((fruit) => {
         let filterFruits = FRUITS.map((f, index) => {
           return { name: f, index: index };
-        }).filter((f) => f.name.startsWith(FRUITS[fruit]));
+        }).filter((f) => f.name.startsWith(FRUIT_TYPES[fruit]));
         let randomIndex = Math.floor(Math.random() * filterFruits.length);
         let fIndex = filterFruits[randomIndex].index,
           fName = filterFruits[randomIndex].name;
@@ -514,28 +600,60 @@ class Game extends Container {
         this.activeSprites[i].visible = true;
         ++i;
 
-        let betNumber: number = parseInt(this.credits[fruit].text);
+        // console.log(this.credits, fName, FRUIT_TYPES[fruit], this.credits[FRUIT_TYPES[fruit]]);
+
+        let betNumber: number = parseInt(this.credits[FRUIT_TYPES[fruit]].text);
         totalEarned +=
-          FRUIT_MULS[fruit] * betNumber * (fName.indexOf('*') == -1 ? 1 : 2);
+          FRUIT_MULS[fName] * betNumber * (fName.indexOf('*') == -1 ? 1 : 2);
       });
     } else {
       let betNumber: number = parseInt(this.credits[originName].text);
-      // console.log(fruitName, FRUIT_MULS[originName], betNumber);
+      // console.log(fruitName, FRUIT_MULS[originName], originName, this.credits[originName].text, betNumber);
 
       totalEarned =
         FRUIT_MULS[originName] * betNumber * (starIndex == -1 ? 1 : 2);
-
-      // Enable All Buttons
-      this.btnCtrls['All\n+1'].enabled = true;
-      this.btnCtrls['L'].enabled = true;
-      this.btnCtrls['R'].enabled = true;
-      this.btnCtrls['1-6'].enabled = true;
-      this.btnCtrls['8-13'].enabled = true;
     }
 
-    let totalCoins = parseInt(this.ctrlWin.text);
-    totalCoins += totalEarned;
-    this.ctrlWin.text = totalCoins.toString().padStart(8, '0');
+    // Enable All Buttons
+    this.btnCtrls['All\n+1'].enabled = true;
+    this.btnCtrls['L'].enabled = true;
+    this.btnCtrls['R'].enabled = true;
+    this.btnCtrls['1-6'].enabled = true;
+    this.btnCtrls['8-13'].enabled = true;
+
+    gsap.fromTo(
+      this,
+      {
+        transfer: this.bonusCount,
+      },
+      {
+        transfer: this.bonusCount + totalEarned,
+        duration: 1,
+        ease: 'power1.in',
+        onUpdate: () => {
+          this.ctrlWin.text = parseInt(this.transfer.toString())
+            .toString()
+            .padStart(8, '0');
+        },
+        onComplete: () => {
+          this.bonusCount = this.bonusCount + totalEarned;
+          this.ctrlWin.text = this.bonusCount.toString().padStart(8, '0');
+
+          // Reset bet numbers
+          Object.keys(this.credits).forEach((key) => {
+            this.credits[key].text = '00';
+          });
+        },
+      },
+    );
+
+    // this.bonusCount += totalEarned;
+    // this.ctrlWin.text = this.bonusCount.toString().padStart(8, '0');
+  }
+
+  playSound(type: string) {
+    console.log(`Play Sound :: ${type}`);
+    sound.play(type);
   }
 }
 

@@ -14,7 +14,7 @@
     "lint": "run-s check:lint check:prettier",
     "build:parcel": "parcel build --no-autoinstall",
     "build": "run-s check build:*",
-    "start:parcel": "parcel serve --open --no-autoinstall",
+    "start:parcel": "parcel serve --open --no-autoinstall --public-url /",
     "start": "run-s check start:parcel"
   },
   "devDependencies": {
@@ -49,6 +49,7 @@
     "@pixi/text-html": "^7.2.3"
   },
   "dependencies": {
+    "@pixi/sound": "^5.2.1",
     "@pixi/ui": "^0.8.3",
     "gsap": "^3.12.2",
     "normalize.css": "^8.0.1",

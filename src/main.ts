@@ -32,3 +32,14 @@ document.body.appendChild(app.view);
 
 const gameScene = new Game(app);
 app.stage.addChild(gameScene);
+
+let stopOnField = 0;
+
+Object.defineProperty(window, 'stopOnField', {
+  get: () => stopOnField,
+  set: (newValue) => {
+    stopOnField = newValue;
+
+    gameScene.handleGo(newValue);
+  },
+});
