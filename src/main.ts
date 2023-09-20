@@ -33,6 +33,12 @@ document.body.appendChild(app.view);
 const gameScene = new Game(app);
 app.stage.addChild(gameScene);
 
+// For test
+gameScene.setToken(
+  'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE2OTQ1MjQxNzgsImV4cCI6MTY5NDUyNzc3OCwicm9sZXMiOlsiUk9MRV9VU0VSIiwidXNlciJdLCJ1c2VybmFtZSI6Ing0NXh6OCIsInV1aWQiOiIxZWU1MTZkYS0xMDBjLTYyYTYtYTVhOC0wMjQyYWMxZDAwMDciLCJnYW1lX3BhdGgiOiIvZ2FtZS90ZXN0L2ZydWl0eS1mb3J0dW5lLWZyZW56eS1kZXYifQ.ScW2FQ-ljJIWiazczpKt5jqBICGFtnZNAyJIoAYl3MlI08cMOyTL_91n3_jne9NpndOMdDXrofnOb5g1id4O1IWSNXZXDN2zazYNROObLcsCQ84o4JakyaOifFeELDHJ8vHRzE52MnG69Cacj7AVNXRG84GWqi6YT0AcY4w2MaMBdPtlAMwEF9V48FRi7hZS0o6ICVcAjK-wXR-ybAvUwhfVW45vAGj6dzz7-_YcHdqO4sP_jqLd76Z-3-ItIA4j6Q39HxGHBXX47giKPwu06398FWSapsYNvQjtnH03Eg1hS3W2Ux46Wjm7LNq2wpWm2JKX8Uz3RZU04O4K6HL5gA',
+);
+gameScene.setApiUrl('https://gameserver.demo.itbcode.com');
+
 let stopOnField = 0;
 
 Object.defineProperty(window, 'stopOnField', {
@@ -40,6 +46,14 @@ Object.defineProperty(window, 'stopOnField', {
   set: (newValue) => {
     stopOnField = newValue;
 
-    gameScene.handleGo(newValue);
+    gameScene.handleGo(newValue, false);
   },
+});
+
+window.addEventListener('message', (event) => {
+  if (event.data.token) {
+    gameScene.setToken(event.data.token);
+    gameScene.setApiUrl(event.data.api_url);
+    gameScene.setUserInfo(event.data.user);
+  }
 });

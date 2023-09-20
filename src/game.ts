@@ -10,6 +10,7 @@ import { Text, TextStyle } from '@pixi/text';
 import { Button } from '@pixi/ui';
 import { gsap } from 'gsap';
 import { sound } from '@pixi/sound';
+import axios from 'axios';
 
 import {
   PADDING_SIZE,
@@ -28,6 +29,21 @@ interface Credits {
 
 interface CtrlButton {
   [key: string]: Button;
+}
+
+interface FieldObject {
+  [key: string]: {
+    a: number;
+    b: number;
+    c: number;
+    d: number;
+  };
+}
+
+interface UserInfo {
+  balance: number;
+  id: number;
+  username: string;
 }
 
 class Game extends Container {
@@ -51,6 +67,8 @@ class Game extends Container {
   addCoins: number;
   transfer: number;
   tween: any;
+  token: string;
+  apiUrl: string;
 
   constructor(app: Application<HTMLCanvasElement>) {
     super();
@@ -71,6 +89,7 @@ class Game extends Container {
     this.addCoins = 1;
     this.transfer = 0;
     this.tween = null;
+    this.token = this.apiUrl = '';
 
     // functions
     this.update = this.update.bind(this);
@@ -294,7 +313,8 @@ class Game extends Container {
             this.handleBetDoubling('big');
             break;
           case 'GO':
-            this.handleGo('');
+            // this.handleGo('');
+            this.bet();
             break;
         }
       });
@@ -358,6 +378,10 @@ class Game extends Container {
   update(delta: number) {
     if (!this.isInit || this.curSpeed == 0) return;
 
+    this.invalidate();
+  }
+
+  invalidate() {
     this.activeCell = (this.activeCell + this.curSpeed) % 24;
     this.activeSprites[0].x =
       this.startX +
@@ -473,22 +497,31 @@ class Game extends Container {
       return;
     }
 
+    console.log(this.bonusCount);
+
     this.guessNumber = Math.floor(Math.random() * 13) + 1;
     this.ctrlGuess.text = this.guessNumber.toString().padStart(2, '0');
 
-    if (doubling == 'small') {
-      this.bonusCount = this.guessNumber < 7 ? this.bonusCount * 2 : 0;
-    } else {
-      this.bonusCount = this.guessNumber > 7 ? this.bonusCount * 2 : 0;
-    }
+    const isWin =
+      (doubling == 'small' && this.guessNumber < 7) ||
+      (doubling != 'small' && this.guessNumber > 7);
 
     // Win Or Lose Sound
     this.playSound(this.bonusCount == 0 ? 'error' : 'win');
 
-    this.ctrlWin.text = this.bonusCount.toString().padStart(8, '0');
+    this.win(isWin ? this.bonusCount : -this.bonusCount)
+      .then((res) => {
+        this.bonusCount = 0;
+        this.coinCount = res.data.balance;
+        this.ctrlWin.text = this.bonusCount.toString().padStart(8, '0');
+        this.ctrlCredits.text = this.coinCount.toString().padStart(8, '0');
+      })
+      .catch((error) => {
+        console.error(error);
+      });
   }
 
-  handleGo(stopField: string) {
+  handleGo(stopField: string, bonus: boolean) {
     let target: number = FRUITS.indexOf(stopField);
     // console.log('Go to :: ', target);
 
@@ -507,6 +540,10 @@ class Game extends Container {
       this.ctrlCredits.text = this.coinCount.toString().padStart(8, '0');
       this.ctrlWin.text = '0'.padStart(8, '0');
     }
+
+    this.activeMultiply.forEach((am) => {
+      am.style.fill = 'yellow';
+    });
 
     this.btnCtrls['All\n+1'].enabled = false;
     this.btnCtrls['L'].enabled = false;
@@ -530,15 +567,30 @@ class Game extends Container {
       onComplete: () => {
         setTimeout(() => {
           let delay =
-            target < 0 ? 0 : ((target + 23 - this.activeCell) % 24) * 16.67;
+            target < 0 ? 0 : ((target + 23 - this.activeCell - 1) % 24) * 16.67;
           setTimeout(() => {
             gsap.to(this, {
               curSpeed: 0,
               duration: decelerate_time,
               ease: 'none',
               onComplete: () => {
+                if (bonus) {
+                  let starIndex = stopField.indexOf('*');
+                  let originName = stopField.slice(
+                    0,
+                    starIndex == -1 ? stopField.length : starIndex,
+                  );
+                  let index = FRUIT_TYPES.indexOf(originName);
+                  if (index != -1)
+                    this.activeMultiply[
+                      FRUIT_TYPES.indexOf(originName)
+                    ].style.fill = 'red';
+                }
+
                 this.curSpeed = 0;
                 this.activeCell = target < 0 ? this.activeCell : target;
+                console.log('**', this.activeCell);
+                this.invalidate();
                 this.slotCompleted();
               },
             });
@@ -603,16 +655,32 @@ class Game extends Container {
         // console.log(this.credits, fName, FRUIT_TYPES[fruit], this.credits[FRUIT_TYPES[fruit]]);
 
         let betNumber: number = parseInt(this.credits[FRUIT_TYPES[fruit]].text);
-        totalEarned +=
-          FRUIT_MULS[fName] * betNumber * (fName.indexOf('*') == -1 ? 1 : 2);
+        let mul =
+          this.activeMultiply[FRUIT_TYPES.indexOf(fName)].style.fill ==
+          '#ff0000'
+            ? FRUIT_MULS[fName]
+            : 1;
+        totalEarned += mul * betNumber * (fName.indexOf('*') == -1 ? 1 : 2);
       });
     } else {
       let betNumber: number = parseInt(this.credits[originName].text);
-      // console.log(fruitName, FRUIT_MULS[originName], originName, this.credits[originName].text, betNumber);
+      let mul =
+        this.activeMultiply[FRUIT_TYPES.indexOf(originName)].style.fill ==
+        '#ff0000'
+          ? FRUIT_MULS[originName]
+          : 1;
 
-      totalEarned =
-        FRUIT_MULS[originName] * betNumber * (starIndex == -1 ? 1 : 2);
+      totalEarned = mul * betNumber * (starIndex == -1 ? 1 : 2);
     }
+
+    // Update balance from server
+    this.win(totalEarned)
+      .then((res) => {
+        console.log(res);
+      })
+      .catch((error) => {
+        console.error(error);
+      });
 
     // Enable All Buttons
     this.btnCtrls['All\n+1'].enabled = true;
@@ -653,7 +721,98 @@ class Game extends Container {
 
   playSound(type: string) {
     console.log(`Play Sound :: ${type}`);
-    sound.play(type);
+    // sound.play(type);
+  }
+
+  setToken(token: string) {
+    this.token = token;
+  }
+
+  setApiUrl(url: string) {
+    this.apiUrl = url;
+  }
+
+  setUserInfo(info: UserInfo) {
+    this.coinCount = info.balance;
+  }
+
+  bet() {
+    const headers = {
+      Authorization: 'Bearer ' + this.token,
+      'Content-Type': 'application/json',
+    };
+
+    let fields: FieldObject = {
+      apple: { a: 1, b: 2, c: 5, d: 10 },
+      orange: { a: 1, b: 2, c: 10, d: 20 },
+      lemon: { a: 1, b: 2, c: 15, d: 30 },
+      bell: { a: 1, b: 2, c: 20, d: 40 },
+      watermelon: { a: 1, b: 2, c: 20, d: 40 },
+      star: { a: 1, b: 2, c: 30, d: 60 },
+      seven: { a: 1, b: 2, c: 40, d: 80 },
+      bar: { a: 1, b: 2, c: 50, d: 100 },
+    };
+
+    let randomFruit = FRUIT_TYPES[Math.floor(Math.random() * 8)];
+    let randomFields = fields[randomFruit];
+
+    let betNumber: number = parseInt(this.credits[randomFruit].text);
+
+    randomFields.a *= betNumber;
+    randomFields.b *= betNumber;
+    randomFields.c *= betNumber;
+    randomFields.d *= betNumber;
+
+    console.log(randomFields);
+
+    let raw = JSON.stringify({
+      fields: {
+        fruit: randomFields,
+      },
+    });
+
+    axios
+      .post(this.apiUrl + '/api/bet/new', raw, { headers: headers })
+      .then((response) => {
+        // let balance = response.data.balance;
+        let bets = response.data.bets.fruit;
+
+        let canFruits = [];
+        if (bets.a)
+          canFruits.push({
+            fruit: randomFruit,
+            bonus: randomFruit == 'bar' || randomFruit == 'apple',
+          });
+        if (bets.b)
+          canFruits.push({
+            fruit: randomFruit + '*2',
+            bonus: randomFruit == 'bar' || randomFruit == 'apple',
+          });
+        if (bets.c) canFruits.push({ fruit: randomFruit, bonus: true });
+        if (bets.d) canFruits.push({ fruit: randomFruit + '*2', bonus: true });
+
+        let index = Math.floor(canFruits.length * Math.random());
+
+        console.log(canFruits[index].fruit, canFruits[index].bonus);
+
+        this.handleGo(canFruits[index].fruit, canFruits[index].bonus);
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+  }
+
+  win(amount: number) {
+    const headers = {
+      Authorization: 'Bearer ' + this.token,
+      'Content-Type': 'application/json',
+    };
+
+    let raw = JSON.stringify({
+      amount: amount,
+    });
+
+    return axios.post(this.apiUrl + '/api/bet/win', raw, { headers: headers });
   }
 }
 
